@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from app.models import init_db, SessionLocal, Post, Variant
+from app.models import init_db, SessionLocal, Post, Variant, ScheduleSlot
+from datetime import datetime
 from app.generator import generate_variant_text
 from app.constraints import PROFILES
 
@@ -79,5 +80,75 @@ def edit_variant(variant_id: int, edit: VariantEdit):
     db.commit()
     db.refresh(variant)
     result = {"id": variant.id, "platform": variant.platform, "text": variant.text, "status": variant.status}
+    db.close()
+    return result
+
+@app.post("/variants/{variant_id}/approve")
+def approve_variant(variant_id: int):
+    db = SessionLocal()
+    variant = db.query(Variant).filter(Variant.id == variant_id).first()
+    if not variant:
+        db.close()
+        raise HTTPException(status_code=404, detail="Variant not found")
+
+    if variant.status not in ("draft", "rejected"):
+        db.close()
+        raise HTTPException(status_code=400, detail=f"Cannot approve a variant with status '{variant.status}'")
+
+    variant.status = "approved"
+    db.commit()
+    db.refresh(variant)
+    result = {"id": variant.id, "platform": variant.platform, "status": variant.status}
+    db.close()
+    return result
+
+
+@app.post("/variants/{variant_id}/reject")
+def reject_variant(variant_id: int):
+    db = SessionLocal()
+    variant = db.query(Variant).filter(Variant.id == variant_id).first()
+    if not variant:
+        db.close()
+        raise HTTPException(status_code=404, detail="Variant not found")
+
+    if variant.status not in ("draft", "approved"):
+        db.close()
+        raise HTTPException(status_code=400, detail=f"Cannot reject a variant with status '{variant.status}'")
+
+    variant.status = "rejected"
+    db.commit()
+    db.refresh(variant)
+    result = {"id": variant.id, "platform": variant.platform, "status": variant.status}
+    db.close()
+    return result
+class ScheduleIn(BaseModel):
+    scheduled_time: str  # ISO format, e.g. "2026-09-04T15:30:00"
+
+
+@app.post("/variants/{variant_id}/schedule")
+def schedule_variant(variant_id: int, schedule: ScheduleIn):
+    db = SessionLocal()
+    variant = db.query(Variant).filter(Variant.id == variant_id).first()
+    if not variant:
+        db.close()
+        raise HTTPException(status_code=404, detail="Variant not found")
+
+    if variant.status != "approved":
+        db.close()
+        raise HTTPException(status_code=400, detail=f"Cannot schedule a variant with status '{variant.status}'. Only approved variants can be scheduled.")
+
+    try:
+        scheduled_dt = datetime.fromisoformat(schedule.scheduled_time)
+    except ValueError:
+        db.close()
+        raise HTTPException(status_code=400, detail="scheduled_time must be a valid ISO datetime string")
+
+    idempotency_key = f"variant-{variant.id}-slot-{scheduled_dt.isoformat()}"
+
+    slot = ScheduleSlot(variant_id=variant.id, scheduled_time=scheduled_dt, idempotency_key=idempotency_key)
+    db.add(slot)
+    db.commit()
+    db.refresh(slot)
+    result = {"id": slot.id, "variant_id": slot.variant_id, "scheduled_time": slot.scheduled_time.isoformat(), "idempotency_key": slot.idempotency_key}
     db.close()
     return result
