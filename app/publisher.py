@@ -62,6 +62,7 @@ def publish_slot(slot_id: int) -> PublishResult:
             schedule_slot_id=slot.id,
             result="success" if result.success else "failure",
             platform_message_id=result.platform_message_id,
+            message_url=result.message_url,
             error_message=result.error_message,
         )
         db.add(attempt)

@@ -49,6 +49,7 @@ class PublishAttempt(Base):
     attempted_at = Column(DateTime, default=datetime.utcnow)
     result = Column(String, nullable=False)  # success | failure
     platform_message_id = Column(String, nullable=True)
+    message_url = Column(String, nullable=True)
     error_message = Column(Text, nullable=True)
 
     schedule_slot = relationship("ScheduleSlot", back_populates="publish_attempts")

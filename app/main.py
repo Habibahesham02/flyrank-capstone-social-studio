@@ -7,6 +7,9 @@ from app.constraints import PROFILES
 from dotenv import load_dotenv
 load_dotenv()
 from app.publisher import publish_slot
+import re
+import html
+import requests
 
 app = FastAPI(title="Social Media Studio")
 
@@ -25,13 +28,33 @@ def create_post(post: PostIn):
     if post.source_type not in ("url", "markdown"):
         raise HTTPException(status_code=400, detail="source_type must be 'url' or 'markdown'")
 
+    content = post.content
+
+    if post.source_type == "url":
+        try:
+            response = requests.get(post.content, timeout=10, headers={"User-Agent": "SocialMediaStudio/1.0"})
+            response.raise_for_status()
+        except requests.RequestException as e:
+            raise HTTPException(status_code=400, detail=f"Could not fetch URL: {e}")
+
+        # Strip HTML tags to get readable text
+        text = re.sub(r"<script.*?</script>", " ", response.text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<style.*?</style>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = html.unescape(text)
+        content = re.sub(r"\s+", " ", text).strip()
+
+        if not content:
+            raise HTTPException(status_code=400, detail="Fetched URL contained no readable text")
+
     db = SessionLocal()
-    new_post = Post(source_type=post.source_type, content=post.content)
+    new_post = Post(source_type=post.source_type, content=content)
     db.add(new_post)
     db.commit()
     db.refresh(new_post)
+    result = {"id": new_post.id, "source_type": new_post.source_type, "content": new_post.content}
     db.close()
-    return {"id": new_post.id, "source_type": new_post.source_type, "content": new_post.content}
+    return result
 
 
 @app.post("/posts/{post_id}/generate")
@@ -158,8 +181,12 @@ def schedule_variant(variant_id: int, schedule: ScheduleIn):
 @app.post("/schedule-slots/{slot_id}/publish")
 def trigger_publish(slot_id: int):
     result = publish_slot(slot_id)
-    return {"success": result.success, "platform_message_id": result.platform_message_id, "error_message": result.error_message}
-
+    return {
+        "success": result.success,
+        "platform_message_id": result.platform_message_id,
+        "message_url": result.message_url,
+        "error_message": result.error_message,
+    }
 @app.get("/publish-history")
 def get_publish_history():
     db = SessionLocal()
@@ -172,6 +199,7 @@ def get_publish_history():
             "result": a.result,
             "platform_message_id": a.platform_message_id,
             "error_message": a.error_message,
+             "message_url": a.message_url,
         }
         for a in attempts
     ]

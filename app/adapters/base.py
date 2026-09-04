@@ -8,7 +8,7 @@ class PublishResult:
     success: bool
     platform_message_id: Optional[str] = None
     error_message: Optional[str] = None
-
+    message_url: Optional[str] = None
 
 class SocialPublisher(ABC):
     @abstractmethod

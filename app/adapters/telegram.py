@@ -20,8 +20,20 @@ class TelegramPublisher(SocialPublisher):
             data = response.json()
 
             if response.status_code == 200 and data.get("ok"):
-                message_id = str(data["result"]["message_id"])
-                return PublishResult(success=True, platform_message_id=message_id)
+                result_data = data["result"]
+                message_id = str(result_data["message_id"])
+
+                # Build a public link to the message where possible.
+                chat = result_data.get("chat", {})
+                username = chat.get("username")
+                if username:
+                    link = f"https://t.me/{username}/{message_id}"
+                else:
+                    # Private channels: strip the -100 prefix for the t.me/c/ form
+                    numeric_id = str(chat.get("id", "")).replace("-100", "", 1)
+                    link = f"https://t.me/c/{numeric_id}/{message_id}" if numeric_id else None
+
+                return PublishResult(success=True, platform_message_id=message_id, message_url=link)
             else:
                 error = data.get("description", "Unknown Telegram API error")
                 return PublishResult(success=False, error_message=error)
