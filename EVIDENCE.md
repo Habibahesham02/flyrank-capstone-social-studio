@@ -29,3 +29,31 @@ Then scheduled variant 1 (approved) successfully:
 
 Result: unapproved variant blocked with 4xx and named reason; approved variant
 schedules successfully with a unique idempotency key.
+
+## Probe 4 — Real publish to Telegram
+Approved and scheduled variant 1 (telegram) as slot 1.
+Called `POST /schedule-slots/1/publish`.
+
+Response: {"success":true,"platform_message_id":"5","error_message":null}
+
+Result: real message posted to Telegram channel, confirmed visually in the channel.
+
+## Probe 5 — Idempotent retry (no duplicate)
+Called `POST /schedule-slots/1/publish` a second time (same slot, simulating a retry).
+
+Response: {"success":true,"platform_message_id":"5","error_message":"Already published (idempotent no-op)"}
+
+Result: same platform_message_id returned both times ("5"), no second Telegram
+message sent, no second real API call made. Confirmed only one message exists
+in the channel after both calls.
+
+## Probe 6 — Adapter swap
+Approved and scheduled variant 3 (mock_linkedin) as slot 2.
+Called `POST /schedule-slots/2/publish` — identical endpoint/logic to Probe 4,
+only the variant's platform differed.
+
+Response: {"success":true,"platform_message_id":"mock_linkedin_bcfb24a331","error_message":null}
+
+Result: same code path routed to MockLinkedInPublisher instead of
+TelegramPublisher based purely on `variant.platform` — zero business logic
+changes between platforms, confirming the adapter interface works as designed.

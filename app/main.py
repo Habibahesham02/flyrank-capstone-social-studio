@@ -4,6 +4,9 @@ from app.models import init_db, SessionLocal, Post, Variant, ScheduleSlot
 from datetime import datetime
 from app.generator import generate_variant_text
 from app.constraints import PROFILES
+from dotenv import load_dotenv
+load_dotenv()
+from app.publisher import publish_slot
 
 app = FastAPI(title="Social Media Studio")
 
@@ -152,3 +155,7 @@ def schedule_variant(variant_id: int, schedule: ScheduleIn):
     result = {"id": slot.id, "variant_id": slot.variant_id, "scheduled_time": slot.scheduled_time.isoformat(), "idempotency_key": slot.idempotency_key}
     db.close()
     return result
+@app.post("/schedule-slots/{slot_id}/publish")
+def trigger_publish(slot_id: int):
+    result = publish_slot(slot_id)
+    return {"success": result.success, "platform_message_id": result.platform_message_id, "error_message": result.error_message}
