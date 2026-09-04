@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from app.models import init_db, SessionLocal, Post, Variant, ScheduleSlot
+from app.models import init_db, SessionLocal, Post, Variant, ScheduleSlot, PublishAttempt
 from datetime import datetime
 from app.generator import generate_variant_text
 from app.constraints import PROFILES
@@ -159,3 +159,21 @@ def schedule_variant(variant_id: int, schedule: ScheduleIn):
 def trigger_publish(slot_id: int):
     result = publish_slot(slot_id)
     return {"success": result.success, "platform_message_id": result.platform_message_id, "error_message": result.error_message}
+
+@app.get("/publish-history")
+def get_publish_history():
+    db = SessionLocal()
+    attempts = db.query(PublishAttempt).order_by(PublishAttempt.attempted_at.desc()).all()
+    result = [
+        {
+            "id": a.id,
+            "schedule_slot_id": a.schedule_slot_id,
+            "attempted_at": a.attempted_at.isoformat(),
+            "result": a.result,
+            "platform_message_id": a.platform_message_id,
+            "error_message": a.error_message,
+        }
+        for a in attempts
+    ]
+    db.close()
+    return result
