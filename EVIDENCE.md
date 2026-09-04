@@ -57,3 +57,21 @@ Response: {"success":true,"platform_message_id":"mock_linkedin_bcfb24a331","erro
 Result: same code path routed to MockLinkedInPublisher instead of
 TelegramPublisher based purely on `variant.platform` — zero business logic
 changes between platforms, confirming the adapter interface works as designed.
+
+## Durable scheduling — worker crash and restart, zero duplicates
+Scheduled variant 5 (mock_x) as slot 5. Started `worker.py`, which picked up
+the slot and was killed with Ctrl+C mid-publish (before the adapter call
+completed, so no PublishAttempt was written).
+
+Restarted `worker.py`. It re-scanned, found slot 5 still had no successful
+attempt, and published it exactly once:
+  -> success=True message_id=mock_x_df2fba3494 error=None
+
+Verification via `GET /publish-history`:
+Exactly one attempt row per schedule_slot_id (1,2,3,4,5) — no duplicates.
+
+Note on coverage: this test covers a crash BEFORE the publish completes
+(worker safely resumes unfinished work). The complementary case — a retry
+AFTER a successful publish — is covered in Probe 5 above, where a repeated
+call returned the same platform_message_id and wrote no second attempt.
+Together these cover both directions of the idempotency requirement.
