@@ -1,3 +1,4 @@
+import os
 from app.adapters.base import PublishResult
 from app.adapters.telegram import TelegramPublisher
 from app.adapters.mocks import MockXPublisher, MockLinkedInPublisher
@@ -10,11 +11,28 @@ ADAPTERS = {
 }
 
 
+def resolve_adapter(platform: str):
+    """
+    Returns the adapter for a platform.
+
+    ADAPTER_OVERRIDE in the environment forces ALL publishing through a single
+    adapter, regardless of the variant's platform. This is the configuration
+    swap: set ADAPTER_OVERRIDE=mock_x in .env and the same campaign publishes
+    through MockXPublisher instead of Telegram, with no code change.
+    """
+    override = os.getenv("ADAPTER_OVERRIDE")
+    if override:
+        if override not in ADAPTERS:
+            raise ValueError(f"ADAPTER_OVERRIDE='{override}' is not a known adapter. Valid: {list(ADAPTERS)}")
+        return ADAPTERS[override], override
+    return ADAPTERS[platform], platform
+
+
 def publish_slot(slot_id: int) -> PublishResult:
     """
     Idempotently publish the variant tied to a schedule slot.
-    Safe to call this function multiple times for the same slot_id —
-    if it already has a successful PublishAttempt, it will NOT publish again.
+    Safe to call multiple times for the same slot_id — if it already has a
+    successful PublishAttempt, it will NOT publish again.
     """
     db = SessionLocal()
     try:
@@ -36,7 +54,7 @@ def publish_slot(slot_id: int) -> PublishResult:
             )
 
         variant = db.query(Variant).filter(Variant.id == slot.variant_id).first()
-        adapter = ADAPTERS[variant.platform]
+        adapter, used_platform = resolve_adapter(variant.platform)
 
         result = adapter.publish(variant.text, slot.idempotency_key)
 

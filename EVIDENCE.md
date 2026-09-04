@@ -47,16 +47,19 @@ Result: same platform_message_id returned both times ("5"), no second Telegram
 message sent, no second real API call made. Confirmed only one message exists
 in the channel after both calls.
 
-## Probe 6 — Adapter swap
-Approved and scheduled variant 3 (mock_linkedin) as slot 2.
-Called `POST /schedule-slots/2/publish` — identical endpoint/logic to Probe 4,
-only the variant's platform differed.
+## Probe 6 — Adapter swap via configuration
+With `ADAPTER_OVERRIDE=` (empty, default), variant 3 (mock_linkedin) published
+through MockLinkedInPublisher:
+{"success":true,"platform_message_id":"mock_linkedin_bcfb24a331","error_message":null}
 
-Response: {"success":true,"platform_message_id":"mock_linkedin_bcfb24a331","error_message":null}
+Then set `ADAPTER_OVERRIDE=mock_x` in `.env` and restarted the server.
+Variant 7 — whose platform is `telegram` — published through MockXPublisher:
+{"success":true,"platform_message_id":"mock_x_2985614c2a","error_message":null}
 
-Result: same code path routed to MockLinkedInPublisher instead of
-TelegramPublisher based purely on `variant.platform` — zero business logic
-changes between platforms, confirming the adapter interface works as designed.
+Result: the same campaign and the same code path routed to a different adapter
+purely by changing one environment variable. No Telegram message was sent
+despite the variant's platform being `telegram`. Zero business logic changed;
+only configuration.
 
 ## Durable scheduling — worker crash and restart, zero duplicates
 Scheduled variant 5 (mock_x) as slot 5. Started `worker.py`, which picked up
@@ -75,3 +78,12 @@ Note on coverage: this test covers a crash BEFORE the publish completes
 AFTER a successful publish — is covered in Probe 5 above, where a repeated
 call returned the same platform_message_id and wrote no second attempt.
 Together these cover both directions of the idempotency requirement.
+
+## Additional idempotency evidence — two concurrent callers
+Slot 6 was scheduled with a past timestamp while `worker.py` was running. The
+worker published it first; a manual `POST /schedule-slots/6/publish` moments
+later returned:
+{"success":true,"platform_message_id":"mock_linkedin_9c61924383","error_message":"Already published (idempotent no-op)"}
+
+Result: two independent callers (worker and API) hit the same slot; only one
+publish occurred, and the second returned the first's message ID.

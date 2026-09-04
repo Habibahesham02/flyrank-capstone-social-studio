@@ -156,6 +156,18 @@ Because this check reads from the database rather than in-memory state, a worker
 that crashes and restarts sees the same history and makes the same decision.
 Unfinished work resumes; finished work is skipped.
 
+## Swapping adapters (configuration only)
+
+Set `ADAPTER_OVERRIDE` in `.env` to force all publishing through a single
+adapter, regardless of each variant's own platform:
+
+```
+ADAPTER_OVERRIDE=mock_x
+```
+
+Restart the server. A variant whose platform is `telegram` will now publish
+through `MockXPublisher` instead. Leave it empty for normal behavior (each
+variant publishes to its own platform). No code changes required.
 ## Known limitations
 
 - **Variant generation is template-based**, not AI-generated. It truncates the
